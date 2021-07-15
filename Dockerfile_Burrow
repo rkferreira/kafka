@@ -1,0 +1,25 @@
+# stage 1: builder
+FROM golang:1.16-alpine as builder
+
+ENV BURROW_SRC /usr/src/Burrow/
+
+RUN apk add --no-cache git curl
+COPY . $BURROW_SRC
+WORKDIR $BURROW_SRC
+
+RUN go mod tidy && go build -o /tmp/burrow .
+
+# stage 2: runner
+FROM alpine:3.13
+
+LABEL maintainer="LinkedIn Burrow https://github.com/linkedin/Burrow"
+
+# for secure connection
+RUN apk add openjdk8
+RUN find /usr/lib/jvm/default-jvm/ -name "cacerts" -exec cp {} /tmp/kafka.client.truststore.jks \;
+RUN keytool --list -rfc -keystore /tmp/kafka.client.truststore.jks >/tmp/truststore.pem
+
+COPY --from=builder /tmp/burrow /app/
+COPY docker-config/burrow-ssl.toml /etc/burrow/burrow.toml
+
+CMD ["/app/burrow", "--config-dir", "/etc/burrow"]
